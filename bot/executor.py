@@ -3,8 +3,9 @@ Executes trades on Polymarket CLOB.
 Places UP and DOWN orders simultaneously (parallel) to minimize slippage.
 """
 import asyncio
+from functools import partial
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import OrderArgs, OrderType, Side
+from py_clob_client.clob_types import OrderArgs, Side
 from py_clob_client.constants import POLYGON
 from config import API_KEY, API_SECRET, API_PASSPHRASE, PRIVATE_KEY, CLOB_HOST
 from bot.monitor import ArbOpportunity
@@ -28,7 +29,7 @@ def build_client() -> ClobClient:
 
 
 async def place_order(client: ClobClient, token_id: str, price: float, size: float, label: str) -> dict:
-    """Place a single taker order (market buy)."""
+    """Place a single taker order (market buy). Runs in thread pool to avoid blocking event loop."""
     try:
         order_args = OrderArgs(
             token_id=token_id,
@@ -36,7 +37,8 @@ async def place_order(client: ClobClient, token_id: str, price: float, size: flo
             size=size,
             side=Side.BUY,
         )
-        order = client.create_and_post_order(order_args)
+        loop = asyncio.get_event_loop()
+        order = await loop.run_in_executor(None, partial(client.create_and_post_order, order_args))
         log.info(f"  {label} order placed: {size:.4f} USDC @ {price:.3f} | id={order.get('orderID', '?')[:12]}")
         return order
     except Exception as e:
